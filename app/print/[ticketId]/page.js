@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Printer, Usb } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import QRCode from 'qrcode.react';
+import { QRCodeCanvas } from 'qrcode.react';
 import { toast } from 'sonner';
 import thermalPrinter from '@/utils/printer';
 
@@ -192,7 +192,7 @@ export default function PrintTicketPage() {
 
           {/* QR Code */}
           <div className="flex justify-center py-4">
-            <QRCode value={ticket.qr_code_data} size={120} />
+            <QRCodeCanvas value={ticket.qr_code_data} size={120} />
           </div>
 
           {/* Footer */}
