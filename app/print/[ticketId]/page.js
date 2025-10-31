@@ -192,7 +192,7 @@ export default function PrintTicketPage() {
 
           {/* QR Code */}
           <div className="flex justify-center py-4">
-            <QRCodeCanvas value={ticket.qr_code_data} size={120} />
+            <QRCodeCanvas value={ticket.id} size={120} />
           </div>
 
           {/* Footer */}
