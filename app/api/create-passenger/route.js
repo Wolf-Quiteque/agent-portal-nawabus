@@ -40,11 +40,25 @@ export async function POST(req) {
       );
     }
 
-    // Ver se já existe um passageiro com este número
+    // Normalize phone numbers to include Angola country code
+    const normalizePhoneNumber = (phone) => {
+      if (!phone) return phone;
+      const cleaned = phone.replace(/\D/g, '');
+      // If it doesn't start with 244 and is 9 digits starting with 9, add 244
+      if (!cleaned.startsWith('244') && cleaned.length === 9 && cleaned.startsWith('9')) {
+        return `244${cleaned}`;
+      }
+      return cleaned;
+    };
+
+    const normalizedPhoneNumber = normalizePhoneNumber(phone_number);
+    const normalizedEmergencyPhone = normalizePhoneNumber(emergency_contact_phone);
+
+    // Ver se já existe um passageiro com este número (usar número normalizado)
     const { data: existingProfile, error: existingErr } = await supabase
       .from('profiles')
       .select('id, phone_number, role, first_name, last_name')
-      .eq('phone_number', phone_number)
+      .eq('phone_number', normalizedPhoneNumber)
       .eq('role', 'passenger')
       .limit(1)
       .maybeSingle();
@@ -87,7 +101,7 @@ export async function POST(req) {
           role: 'passenger',
           first_name,
           last_name,
-          phone_number,
+          phone_number: normalizedPhoneNumber,
         },
       });
 
@@ -114,7 +128,7 @@ export async function POST(req) {
     await supabase.from('passengers').upsert({
       id: passengerId,
       emergency_contact_name: emergency_contact_name || null,
-      emergency_contact_phone: emergency_contact_phone || null,
+      emergency_contact_phone: normalizedEmergencyPhone || null,
       passport_number: passport_number || null,
       nationality: nationality || null,
     });
@@ -123,7 +137,7 @@ export async function POST(req) {
       passenger_id: passengerId,
       first_name,
       last_name,
-      phone_number,
+      phone_number: normalizedPhoneNumber,
       already_existed: false,
     });
   } catch (err) {
