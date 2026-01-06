@@ -5,7 +5,7 @@ const EXCHANGE_RATE_USD_TO_KZ = 1;
 export async function GET(request, { params }) {
   try {
     const { supabase, user } = await requireAgentRole();
-    const { ticketId } = params;
+    const { ticketId } = await params;
 
     if (!ticketId) {
       return Response.json({ error: 'Ticket ID is required' }, { status: 400 });
@@ -27,7 +27,7 @@ export async function GET(request, { params }) {
         trips!inner(
           departure_time,
           arrival_time,
-          routes!inner(origin, destination)
+          routes!inner(origin_city, destination_city)
         ),
         profiles!passenger_id(id, first_name, last_name, phone_number)
       `)
@@ -43,8 +43,8 @@ export async function GET(request, { params }) {
       ticket_number: ticket.ticket_number,
       passenger_name: `${ticket.profiles.first_name} ${ticket.profiles.last_name}`,
       passenger_phone: ticket.profiles.phone_number,
-      origin: ticket.trips.routes.origin,
-      destination: ticket.trips.routes.destination,
+      origin: ticket.trips.routes.origin_city,
+      destination: ticket.trips.routes.destination_city,
       departure_time: new Date(ticket.trips.departure_time).toLocaleString('pt-AO', {
         day: '2-digit',
         month: '2-digit',
