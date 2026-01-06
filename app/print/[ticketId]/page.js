@@ -1,26 +1,110 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Printer, Usb } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { toast } from "sonner";
+import thermalPrinter from "@/utils/printer";
 import Script from "next/script";
 
-import thermalPrinter from "@/utils/printer";
-import { bixolonPrintTicket } from "@/utils/bixolonWebPrint";
-
-function isBixolonReadyNow() {
+// ---- BIXOLON helpers (JS) ----
+function hasBixolonFunctions() {
+  if (typeof window === "undefined") return false;
   return (
-    typeof window !== "undefined" &&
     typeof window.requestPrint === "function" &&
     typeof window.getPosData === "function" &&
     typeof window.printText === "function"
   );
 }
 
+function configureBixolonServerUrl() {
+  // Default for Windows Web Print SDK is typically this local URL.
+  // You can override in .env.local with NEXT_PUBLIC_BXL_SERVER_URL if needed.
+  const defaultUrl = "http://127.0.0.1:18080/WebPrintSDK/";
+  const url = process.env.NEXT_PUBLIC_BXL_SERVER_URL || defaultUrl;
+
+  // Many SDK builds rely on global serverURL
+  window.serverURL = url;
+
+  // Some builds also expose setter functions (if yours does, this helps)
+  if (typeof window.setWebServerUrl === "function") {
+    try {
+      window.setWebServerUrl(url);
+    } catch {}
+  }
+}
+
+async function bixolonPrintTicket(ticket, logicalName = "Printer1") {
+  if (!hasBixolonFunctions()) {
+    throw new Error(
+      "BIXOLON Web Print SDK não está pronto. Verifique se bxlcommon.js e bxlpos.js carregaram e se o Web Print SDK (Windows/app) está ativo."
+    );
+  }
+
+  configureBixolonServerUrl();
+
+  // Build receipt
+  window.printText("NAWABUS\n", 1, 0, true, false, false, 0, 1);
+  window.printText("Bilhete de Viagem\n\n", 1, 0, true, false, false, 0, 0);
+
+  window.printText(`Bilhete: ${ticket.ticket_number}\n`, 0, 0, false, false, false, 0, 0);
+  window.printText(`Passageiro: ${ticket.passenger_name}\n`, 0, 0, false, false, false, 0, 0);
+  window.printText(`Telefone: ${ticket.passenger_phone}\n\n`, 0, 0, false, false, false, 0, 0);
+
+  window.printText(`Rota: ${ticket.origin} -> ${ticket.destination}\n`, 0, 0, false, false, false, 0, 0);
+  window.printText(`Partida: ${ticket.departure_time}\n`, 0, 0, false, false, false, 0, 0);
+  window.printText(`Lugar: ${ticket.seat_number}\n\n`, 0, 0, true, false, false, 0, 0);
+
+  window.printText(
+    `Valor: ${Number(ticket.price_kz).toLocaleString()} Kz\n`,
+    0,
+    0,
+    true,
+    false,
+    false,
+    0,
+    0
+  );
+  window.printText(`Pagamento: ${ticket.payment_status}\n\n`, 0, 0, false, false, false, 0, 0);
+
+  if (typeof window.printQRCode === "function") {
+    window.printQRCode(String(ticket.id), 0, 1, 7, 0);
+  } else {
+    // QR fallback (still prints ticket even if QR function isn't available)
+    window.printText(`QR: ${ticket.id}\n`, 0, 0, false, false, false, 0, 0);
+  }
+
+  window.printText("\n\n", 0, 0, false, false, false, 0, 0);
+
+  const data = window.getPosData();
+  if (!data) throw new Error("Falha ao gerar dados (getPosData retornou vazio).");
+
+  // Send print
+  await new Promise((resolve, reject) => {
+    try {
+      window.requestPrint(logicalName, data, (result) => {
+        // Many SDKs return strings like "Cannot connect to server"
+        const msg = typeof result === "string" ? result : JSON.stringify(result || {});
+        if (msg && msg.toLowerCase().includes("cannot connect")) {
+          reject(
+            new Error(
+              "Cannot connect to server. Confirme que o Windows Web Print SDK está rodando (porta 18080) e que o Printer1 está configurado."
+            )
+          );
+          return;
+        }
+        resolve(result);
+      });
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+// ---- Page ----
 export default function PrintTicketPage() {
   const params = useParams();
   const ticketId = params?.ticketId;
@@ -30,11 +114,9 @@ export default function PrintTicketPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Track script loads separately
-  const [bxlCommonLoaded, setBxlCommonLoaded] = useState(false);
-  const [bxlPosLoaded, setBxlPosLoaded] = useState(false);
-
-  // Final readiness flag (scripts loaded + SDK functions present)
+  // Track script readiness properly
+  const [commonLoaded, setCommonLoaded] = useState(false);
+  const [posLoaded, setPosLoaded] = useState(false);
   const [bixolonReady, setBixolonReady] = useState(false);
 
   const printRef = useRef(null);
@@ -47,12 +129,12 @@ export default function PrintTicketPage() {
   const loadTicket = async () => {
     try {
       const response = await fetch(`/api/get-ticket/${ticketId}`);
-      if (!response.ok) {
+      if (response.ok) {
+        const data = await response.json();
+        setTicket(data.ticket);
+      } else {
         setError("Bilhete não encontrado");
-        return;
       }
-      const data = await response.json();
-      setTicket(data.ticket);
     } catch (err) {
       console.error("Error loading ticket:", err);
       setError("Erro ao carregar bilhete");
@@ -61,51 +143,53 @@ export default function PrintTicketPage() {
     }
   };
 
-  // Once both scripts are loaded, wait a moment until the SDK functions appear
+  // After both scripts load, poll briefly until functions exist
   useEffect(() => {
-    if (!bxlCommonLoaded || !bxlPosLoaded) {
+    if (!commonLoaded || !posLoaded) {
       setBixolonReady(false);
       return;
     }
 
     let alive = true;
-    const start = Date.now();
+    const started = Date.now();
 
-    const tick = () => {
+    const check = () => {
       if (!alive) return;
 
-      if (isBixolonReadyNow()) {
+      if (hasBixolonFunctions()) {
         setBixolonReady(true);
         return;
       }
 
-      // give it up to ~3 seconds to attach globals
-      if (Date.now() - start < 3000) {
-        setTimeout(tick, 150);
+      if (Date.now() - started < 2500) {
+        setTimeout(check, 150);
       } else {
         setBixolonReady(false);
       }
     };
 
-    tick();
+    check();
 
     return () => {
       alive = false;
     };
-  }, [bxlCommonLoaded, bxlPosLoaded]);
+  }, [commonLoaded, posLoaded]);
 
-  const handleBack = () => router.push("/dashboard");
+  const handlePrintBrowser = () => window.print();
 
   const handleUSBPrint = async () => {
     if (!ticket) return;
 
     try {
-      toast.loading("Conectando à impressora USB...");
+      toast.loading("Conectando à impressora...");
       const result = await thermalPrinter.printTicket(ticket);
-      toast.dismiss();
 
-      if (result?.success) toast.success("Bilhete impresso com sucesso na impressora USB!");
-      else toast.error("Erro ao imprimir: " + (result?.error || "Erro desconhecido"));
+      toast.dismiss();
+      if (result?.success) {
+        toast.success("Bilhete impresso com sucesso na impressora USB!");
+      } else {
+        toast.error("Erro ao imprimir: " + (result?.error || "Erro desconhecido"));
+      }
     } catch (err) {
       toast.dismiss();
       console.error("USB print error:", err);
@@ -113,25 +197,12 @@ export default function PrintTicketPage() {
     }
   };
 
-  const handleBixolonPrint = async () => {
+  const handleBixolon = async () => {
     if (!ticket) return;
 
-    // If user is on mobile normal Chrome/Safari, this will never be ready.
-    if (!bixolonReady) {
-      toast.error(
-        "BIXOLON Web Print não está disponível aqui. No mobile, abra o link dentro do app BIXOLON Web Print SDK e registre a impressora (Printer1)."
-      );
-      return;
-    }
-
     try {
-      toast.loading("Imprimindo (BIXOLON Web Print SDK)...");
-      await bixolonPrintTicket(ticket, {
-        logicalName: process.env.NEXT_PUBLIC_BXL_LOGICAL_NAME || "Printer1",
-        host: process.env.NEXT_PUBLIC_BXL_HOST || "127.0.0.1",
-        port: Number(process.env.NEXT_PUBLIC_BXL_PORT || "18080"),
-      });
-
+      toast.loading("Imprimindo (BIXOLON)...");
+      await bixolonPrintTicket(ticket, process.env.NEXT_PUBLIC_BXL_LOGICAL_NAME || "Printer1");
       toast.dismiss();
       toast.success("Bilhete impresso!");
     } catch (err) {
@@ -140,6 +211,8 @@ export default function PrintTicketPage() {
       toast.error(err?.message || "Falha ao imprimir");
     }
   };
+
+  const handleBack = () => router.push("/dashboard");
 
   if (loading) {
     return (
@@ -171,25 +244,30 @@ export default function PrintTicketPage() {
 
   return (
     <>
-      {/* IMPORTANT: these files must exist in /public/bixolon/
-          /public/bixolon/bxlcommon.js
-          /public/bixolon/bxlpos.js
+      {/* These MUST exist:
+          /public/bxlcommon.js
+          /public/bxlpos.js
       */}
       <Script
-        src="/bixolon/bxlcommon.js"
+        src="/bxlcommon.js"
         strategy="afterInteractive"
-        onLoad={() => setBxlCommonLoaded(true)}
-        onError={() => setBxlCommonLoaded(false)}
+        onLoad={() => setCommonLoaded(true)}
+        onError={() => setCommonLoaded(false)}
       />
       <Script
-        src="/bixolon/bxlpos.js"
+        src="/bxlpos.js"
         strategy="afterInteractive"
-        onLoad={() => setBxlPosLoaded(true)}
-        onError={() => setBxlPosLoaded(false)}
+        onLoad={() => setPosLoaded(true)}
+        onError={() => setPosLoaded(false)}
       />
 
       <div className="min-h-screen bg-gray-50 p-4">
         <div className="print:hidden flex flex-wrap gap-4 mb-6">
+          <Button onClick={handlePrintBrowser} className="bg-brand-500 hover:bg-brand-600">
+            <Printer className="h-4 w-4 mr-2" />
+            Imprimir Browser
+          </Button>
+
           <Button
             onClick={handleUSBPrint}
             variant="outline"
@@ -202,17 +280,17 @@ export default function PrintTicketPage() {
           </Button>
 
           <Button
-            onClick={handleBixolonPrint}
+            onClick={handleBixolon}
             variant="outline"
             disabled={!bixolonReady}
             title={
               bixolonReady
                 ? "Pronto"
-                : "Se estiver no mobile, abra este link dentro do app BIXOLON Web Print SDK. No PC, confirme que bxlcommon.js e bxlpos.js carregaram."
+                : "SDK ainda não está pronto. Verifique se bxlcommon.js/bxlpos.js estão carregando (sem 404)."
             }
           >
             <Printer className="h-4 w-4 mr-2" />
-            Imprimir Bluetooth (BIXOLON)
+            Imprimir Bluetooth (Bixolon)
             {!bixolonReady ? " (Aguardando SDK)" : ""}
           </Button>
 
@@ -230,9 +308,7 @@ export default function PrintTicketPage() {
 
           <div className="p-4 space-y-3">
             <div className="text-center">
-              <div className="text-xl font-bold bg-gray-100 p-2 rounded">
-                {ticket.ticket_number}
-              </div>
+              <div className="text-xl font-bold bg-gray-100 p-2 rounded">{ticket.ticket_number}</div>
             </div>
 
             <div className="space-y-1">
