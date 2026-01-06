@@ -37,7 +37,7 @@ function configureBixolonServerUrl() {
   }
 }
 
-async function bixolonPrintTicket(ticket, logicalName = "Printer1") {
+async function bixolonPrintTicket(ticket, logicalName = "printer1") {
   if (!hasBixolonFunctions()) {
     throw new Error(
       "BIXOLON Web Print SDK não está pronto. Verifique se bxlcommon.js e bxlpos.js carregaram e se o Web Print SDK (Windows/app) está ativo."
@@ -91,7 +91,7 @@ async function bixolonPrintTicket(ticket, logicalName = "Printer1") {
         if (msg && msg.toLowerCase().includes("cannot connect")) {
           reject(
             new Error(
-              "Cannot connect to server. Confirme que o Windows Web Print SDK está rodando (porta 18080) e que o Printer1 está configurado."
+              "Cannot connect to server. Confirme que o Windows Web Print SDK está rodando (porta 18080) e que o printer1 está configurado."
             )
           );
           return;
@@ -202,7 +202,7 @@ export default function PrintTicketPage() {
 
     try {
       toast.loading("Imprimindo (BIXOLON)...");
-      await bixolonPrintTicket(ticket, process.env.NEXT_PUBLIC_BXL_LOGICAL_NAME || "Printer1");
+      await bixolonPrintTicket(ticket, process.env.NEXT_PUBLIC_BXL_LOGICAL_NAME || "printer1");
       toast.dismiss();
       toast.success("Bilhete impresso!");
     } catch (err) {
