@@ -112,14 +112,7 @@ export default function PrintTicketPage() {
     router.push('/dashboard');
   };
 
-  useEffect(() => {
-    // Auto-print when ticket loads
-    if (ticket && !loading) {
-      setTimeout(() => {
-        handlePrint();
-      }, 500);
-    }
-  }, [ticket, loading]);
+
 
   if (loading) {
     return (
