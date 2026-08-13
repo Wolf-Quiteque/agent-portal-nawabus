@@ -51,7 +51,7 @@ export function SeatPickerCard() {
   const totalSeats = selectedTrip.bus_capacity || 50;
 
   // cálculo de disponibilidade real
-  const lugaresDisponiveis = totalSeats - occupiedSeats.size;
+  const lugaresDisponiveis = Math.max(totalSeats - 1 - occupiedSeats.size, 0);
 
   // layout:
   // - cada fila "normal" = 4 lugares: [L1, L2] corredor [R1, R2]
@@ -95,7 +95,7 @@ export function SeatPickerCard() {
   }, [fullRows, remainder, totalSeats]);
 
   const renderSeatButton = (seatNumber) => {
-    const isOccupied = occupiedSeats.has(seatNumber);
+    const isOccupied = seatNumber === 1 || occupiedSeats.has(seatNumber);
     const isSelected = selectedSeat === seatNumber;
 
     return (
