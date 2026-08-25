@@ -1,7 +1,5 @@
 import { requireAgentRole } from '@/lib/server-auth';
 
-const EXCHANGE_RATE_USD_TO_KZ = 1;
-
 export async function GET(request, { params }) {
   try {
     const { supabase, user } = await requireAgentRole();
@@ -38,7 +36,8 @@ export async function GET(request, { params }) {
       return Response.json({ error: 'Ticket not found' }, { status: 404 });
     }
 
-    // Format the data for printing
+    // Format the data for printing.
+    // NOTA: `price_paid_usd` é apenas o nome da coluna — o valor já está em Kz.
     const formattedTicket = {
       ticket_number: ticket.ticket_number,
       passenger_name: `${ticket.profiles.first_name} ${ticket.profiles.last_name}`,
@@ -54,7 +53,7 @@ export async function GET(request, { params }) {
         timeZone: 'Africa/Luanda',
       }),
       seat_number: ticket.seat_number,
-      price_kz: Math.round(ticket.price_paid_usd * EXCHANGE_RATE_USD_TO_KZ),
+      price_kz: Math.round(Number(ticket.price_paid_usd || 0)),
       payment_status: ticket.payment_status === 'paid' ? 'Pago' : 'Pendente',
       payment_method: ticket.payment_method === 'cash' ? 'Dinheiro' : 'Referência',
       qr_code_data: ticket.qr_code_data,

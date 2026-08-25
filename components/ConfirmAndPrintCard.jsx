@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useTicketWizardStore } from '@/lib/store';
@@ -23,7 +23,13 @@ export function ConfirmAndPrintCard() {
   const [ticketNumber, setTicketNumber] = useState(null);
   const [error, setError] = useState(null);
 
+  // Guard the auto-create so React strict-mode double-invocation (dev) and any
+  // accidental remount can't silently book a duplicate ticket.
+  const autoCreatedRef = useRef(false);
+
   useEffect(() => {
+    if (autoCreatedRef.current) return;
+    autoCreatedRef.current = true;
     createTicket();
   }, []);
 
@@ -160,7 +166,9 @@ export function ConfirmAndPrintCard() {
               <div>
                 <span className="text-gray-600">Total:</span>
                 <p className="font-bold text-lg text-brand-600">
-                  {selectedTrip.price_kz.toLocaleString()} Kz
+                  {selectedTrip.is_campaign
+                    ? 'Gratuito (Campanha)'
+                    : `${selectedTrip.price_kz.toLocaleString()} Kz`}
                 </p>
               </div>
             </div>

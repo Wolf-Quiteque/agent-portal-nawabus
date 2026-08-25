@@ -62,12 +62,18 @@ export default function NewTicketPage() {
     }
   };
 
+  // Every fresh visit to /new-ticket must start from step 1 with an empty
+  // passenger/trip/seat. Zustand persists in memory across navigations, so
+  // without this reset the previous sale's passenger sticks around and, if
+  // the wizard was left on step 5, ConfirmAndPrintCard re-fires createTicket
+  // and silently books another ticket for the same person.
   useEffect(() => {
-    // If tripId is provided in URL, load it and set as selected
-    if (tripIdParam && !selectedTrip) {
+    reset();
+    if (tripIdParam) {
       loadTripFromParam(tripIdParam);
     }
-  }, [tripIdParam, selectedTrip]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const currentStepData = steps.find(s => s.id === currentStep);
   const CurrentComponent = currentStepData?.component;

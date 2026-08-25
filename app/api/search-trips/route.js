@@ -1,19 +1,5 @@
 import { requireAgentRole } from '@/lib/server-auth';
 
-// taxa de câmbio -> mostra Kz na UI
-const EXCHANGE_RATE_USD_TO_KZ = Number(process.env.EXCHANGE_RATE_USD_TO_KZ || 1);
-
-// Returns the ISO minute key for grouping sibling trips: "2026-03-12T08:00"
-function minuteKey(isoString) {
-  return new Date(isoString).toISOString().slice(0, 16);
-}
-
-function minuteWindow(isoString) {
-  const d = new Date(isoString);
-  d.setSeconds(0, 0);
-  return { start: d.toISOString(), end: new Date(d.getTime() + 60000).toISOString() };
-}
-
 export async function GET(request) {
   try {
     // supabase aqui já está autenticado como agente/admin
@@ -46,9 +32,11 @@ export async function GET(request) {
         arrival_time,
         price_usd,
         available_seats,
+        sales_capacity_limit,
         status,
         route_id,
         bus_id,
+        is_campaign,
         routes:route_id (
           origin_city,
           destination_city,
@@ -84,38 +72,30 @@ export async function GET(request) {
     const tripIds = tripsFiltered.map(t => t.id);
     const nowIso = new Date().toISOString();
 
-    // 2. Determine unique (bus_id, dep_minute) groups from filtered trips.
-    //    For each group we need to fetch ALL sibling trip IDs — including trips
-    //    going to different destinations on the same bus at the same time.
-    const groupKeySet = new Set(
-      tripsFiltered.map(t => `${t.bus_id}|${minuteKey(t.departure_time)}`)
-    );
-
-    // Build a map: groupKey -> Set of all sibling trip IDs across the whole DB
-    const groupSiblingIds = {}; // groupKey -> string[]
+    // 2. Resolve overlapping ("sibling") trips per trip via the shared
+    //    get_overlapping_trip_ids() DB function — same bus + overlapping
+    //    [departure_time, arrival_time] window. This is resolved per-trip
+    //    (not per bus+minute group) because two trips on the same bus can
+    //    now have different departure times (e.g. two pickup terminals)
+    //    and therefore different sibling sets.
+    const siblingsByTrip = {}; // trip_id -> string[] (includes self)
     await Promise.all(
-      Array.from(groupKeySet).map(async (key) => {
-        const [busId, depMinute] = key.split('|');
-        const { start, end } = minuteWindow(depMinute + ':00'); // re-add seconds for minuteWindow
+      tripsFiltered.map(async (t) => {
         const { data: siblings } = await supabase
-          .from('trips')
-          .select('id')
-          .eq('bus_id', busId)
-          .gte('departure_time', start)
-          .lt('departure_time', end);
-        groupSiblingIds[key] = siblings?.map(s => s.id) ?? [];
+          .rpc('get_overlapping_trip_ids', { p_trip_id: t.id });
+        siblingsByTrip[t.id] = siblings?.map(s => s.id) ?? [t.id];
       })
     );
 
-    // Collect all sibling IDs across all groups (for bulk ticket/hold queries)
-    const allSiblingIds = [...new Set(Object.values(groupSiblingIds).flat())];
+    // Collect all sibling IDs across all trips (for bulk ticket/hold queries)
+    const allSiblingIds = [...new Set(Object.values(siblingsByTrip).flat())];
 
     // 3. Buscar assentos ocupados por bilhetes (tickets) across ALL sibling trips
     const { data: takenTickets, error: takenErr } = await supabase
       .from('tickets')
       .select('trip_id, seat_number, status')
       .in('trip_id', allSiblingIds)
-      .in('status', ['active', 'pending']);
+      .in('status', ['active', 'pending', 'used']);
 
     if (takenErr) {
       console.error('[search-trips] takenErr:', takenErr);
@@ -134,41 +114,37 @@ export async function GET(request) {
       return Response.json({ error: 'Falha ao ler reservas' }, { status: 500 });
     }
 
-    // 5. Build group-level occupied seat sets: groupKey -> Set(seat_numbers)
-    //    We use a map from trip_id -> groupKey for fast lookup
-    const tripIdToGroupKey = {};
-    for (const [key, ids] of Object.entries(groupSiblingIds)) {
-      for (const id of ids) {
-        tripIdToGroupKey[id] = key;
-      }
-    }
-
-    const groupOccupiedMap = {}; // groupKey -> Set(seat_number)
+    // 5. Build occupied seat sets per source trip_id, then combine per trip
+    //    using that trip's own sibling set (resolved in step 2).
+    const seatsByTripId = {}; // trip_id -> Set(seat_number)
     for (const t of takenTickets || []) {
-      const key = tripIdToGroupKey[t.trip_id];
-      if (!key) continue;
-      if (!groupOccupiedMap[key]) groupOccupiedMap[key] = new Set();
-      groupOccupiedMap[key].add(t.seat_number);
+      if (!seatsByTripId[t.trip_id]) seatsByTripId[t.trip_id] = new Set();
+      seatsByTripId[t.trip_id].add(t.seat_number);
     }
     for (const h of holds || []) {
-      const key = tripIdToGroupKey[h.trip_id];
-      if (!key) continue;
-      if (!groupOccupiedMap[key]) groupOccupiedMap[key] = new Set();
-      groupOccupiedMap[key].add(h.seat_number);
+      if (!seatsByTripId[h.trip_id]) seatsByTripId[h.trip_id] = new Set();
+      seatsByTripId[h.trip_id].add(h.seat_number);
     }
 
-    // 6. Formatar saída final para o frontend
+    // 6. Formatar saída final para o frontend.
+    //    NOTA: a coluna chama-se `price_usd` por razões históricas mas o valor
+    //    armazenado já está em Kwanzas (AOA) — não converter.
     const formattedTrips = tripsFiltered.map(trip => {
       const busCapacity = trip.buses?.capacity ?? 0;
-      const groupKey = `${trip.bus_id}|${minuteKey(trip.departure_time)}`;
-      const occupiedSeatsSet = groupOccupiedMap[groupKey] || new Set();
-      const realAvailable = Math.max(
-        busCapacity - occupiedSeatsSet.size,
-        0
-      );
+      const occupiedSeatsSet = new Set();
+      for (const siblingId of siblingsByTrip[trip.id] || [trip.id]) {
+        const set = seatsByTripId[siblingId];
+        if (set) for (const seat of set) occupiedSeatsSet.add(seat);
+      }
+      // Seat 1 is reserved for the co-pilot and never belongs to the
+      // passenger pool, even when no ticket row exists for it.
+      const passengerCapacity = Math.max(busCapacity - 1, 0);
+      const effectiveCapacity = trip.sales_capacity_limit == null
+        ? passengerCapacity
+        : Math.min(passengerCapacity, Number(trip.sales_capacity_limit));
+      const realAvailable = Math.max(effectiveCapacity - occupiedSeatsSet.size, 0);
 
-      const priceUsdNum = Number(trip.price_usd || 0);
-      const priceKz = Math.round(priceUsdNum * EXCHANGE_RATE_USD_TO_KZ);
+      const priceKz = Math.round(Number(trip.price_usd || 0));
 
       return {
         id: trip.id,
@@ -176,6 +152,7 @@ export async function GET(request) {
         arrival_time: trip.arrival_time,
         status: trip.status,
         seat_class: trip.seat_class,
+        is_campaign: !!trip.is_campaign,
 
         // disponibilidade "real" — calculada sobre o pool partilhado do autocarro
         available_seats: realAvailable,
@@ -191,8 +168,7 @@ export async function GET(request) {
         // autocarro
         bus_license_plate: trip.buses?.license_plate || '',
 
-        // preços
-        price_usd: priceUsdNum,
+        // preço (Kz)
         price_kz: priceKz,
 
         // string pronta para UI PT

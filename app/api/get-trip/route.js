@@ -1,7 +1,5 @@
 import { requireAgentRole } from '@/lib/server-auth';
 
-const EXCHANGE_RATE_USD_TO_KZ = 1;
-
 export async function GET(request) {
   try {
     const { supabase } = await requireAgentRole();
@@ -21,12 +19,13 @@ export async function GET(request) {
         arrival_time,
         price_usd,
         available_seats,
+        is_campaign,
         routes!inner(
-          origin,
-          destination
+          origin_city,
+          destination_city
         ),
         buses!inner(
-          seat_capacity
+          capacity
         )
       `)
       .eq('id', tripId)
@@ -36,16 +35,20 @@ export async function GET(request) {
       return Response.json({ error: 'Trip not found' }, { status: 404 });
     }
 
+    // NOTA: `price_usd` é apenas o nome da coluna — o valor já está em Kz.
+    const priceKz = Math.round(Number(trip.price_usd || 0));
+
     const formattedTrip = {
       id: trip.id,
       departure_time: trip.departure_time,
       arrival_time: trip.arrival_time,
-      price_kz: Math.round(trip.price_usd * EXCHANGE_RATE_USD_TO_KZ),
+      price_kz: priceKz,
       available_seats: trip.available_seats,
-      origin: trip.routes.origin,
-      destination: trip.routes.destination,
-      seat_capacity: trip.buses.seat_capacity,
-      route: `${trip.routes.origin} → ${trip.routes.destination}`,
+      is_campaign: !!trip.is_campaign,
+      origin: trip.routes.origin_city,
+      destination: trip.routes.destination_city,
+      seat_capacity: trip.buses.capacity,
+      route: `${trip.routes.origin_city} → ${trip.routes.destination_city}`,
     };
 
     return Response.json({ trip: formattedTrip });

@@ -14,8 +14,6 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { getCurrentUserProfile } from '@/lib/client-auth';
 
-const EXCHANGE_RATE_USD_TO_KZ = 850; // Should come from env
-
 export default function Dashboard() {
   const [trips, setTrips] = useState([]);
   const [recentTickets, setRecentTickets] = useState([]);

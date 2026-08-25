@@ -1,7 +1,5 @@
 import { requireAgentRole } from '@/lib/server-auth';
 
-const EXCHANGE_RATE_USD_TO_KZ = 1;
-
 export async function GET(request) {
   try {
     const { supabase, user } = await requireAgentRole();
@@ -62,7 +60,7 @@ export async function GET(request) {
       return Response.json({ error: 'Erro na base de dados' }, { status: 500 });
     }
 
-    // Convert prices to Kz and format data
+    // NOTA: `price_paid_usd` é apenas o nome da coluna — o valor já está em Kz.
     const formattedTickets = tickets.map(ticket => ({
       id: ticket.id,
       ticket_number: ticket.ticket_number,
@@ -71,7 +69,7 @@ export async function GET(request) {
       destination: ticket.trips.routes.destination,
       departure_time: ticket.trips.departure_time,
       seat_number: ticket.seat_number,
-      price_kz: Math.round(ticket.price_paid_usd * EXCHANGE_RATE_USD_TO_KZ),
+      price_kz: Math.round(Number(ticket.price_paid_usd || 0)),
       payment_status: ticket.payment_status === 'paid' ? 'Pago' : 'Pendente',
       booking_time: ticket.booking_time,
     }));

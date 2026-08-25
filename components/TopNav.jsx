@@ -1,6 +1,6 @@
 'use client';
 
-import { LogOut, Printer, Home, History, Plus } from 'lucide-react';
+import { LogOut, Printer, Home, History, Plus, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/lib/supabase';
@@ -16,6 +16,7 @@ export function TopNav({ agentName = '', printerConnected = false, currentPath =
     { href: '/dashboard', label: 'Painel', icon: Home },
     { href: '/history', label: 'Histórico', icon: History },
     { href: '/new-ticket', label: 'Nova Venda', icon: Plus },
+    { href: '/fast-ticket', label: 'Venda Rápida', icon: Zap },
   ];
 
   return (

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { useTicketWizardStore } from '@/lib/store';
@@ -104,7 +105,12 @@ export function TripPickerCard() {
       {/* Selected Trip Display */}
       {selectedTrip && (
         <div className="p-4 border-2 border-brand-500 rounded-lg bg-brand-50">
-          <h3 className="font-semibold text-lg mb-2 text-brand-700">Viagem Selecionada</h3>
+          <div className="flex items-center gap-2 mb-2">
+            <h3 className="font-semibold text-lg text-brand-700">Viagem Selecionada</h3>
+            {selectedTrip.is_campaign && (
+              <Badge variant="outline" className="text-orange-600 border-orange-400">Campanha</Badge>
+            )}
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
               <MapPin className="inline h-4 w-4 mr-1" />
@@ -120,7 +126,9 @@ export function TripPickerCard() {
             </div>
             <div>
               <DollarSign className="inline h-4 w-4 mr-1" />
-              {selectedTrip.price_kz.toLocaleString()} Kz
+              {selectedTrip.is_campaign
+                ? 'Gratuito (Campanha)'
+                : `${selectedTrip.price_kz.toLocaleString()} Kz`}
             </div>
           </div>
         </div>
@@ -145,7 +153,12 @@ export function TripPickerCard() {
             <CardContent className="p-4">
               <div className="flex justify-between items-center">
                 <div className="space-y-2">
-                  <h3 className="font-semibold text-lg">{trip.route}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-lg">{trip.route}</h3>
+                    {trip.is_campaign && (
+                      <Badge variant="outline" className="text-orange-600 border-orange-400">Campanha</Badge>
+                    )}
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
                     <div>
                       <Clock className="inline h-4 w-4 mr-1" />
@@ -157,7 +170,9 @@ export function TripPickerCard() {
                     </div>
                     <div>
                       <DollarSign className="inline h-4 w-4 mr-1" />
-                      Preço: {trip.price_kz.toLocaleString()} Kz
+                      Preço: {trip.is_campaign
+                        ? 'Gratuito (Campanha)'
+                        : `${trip.price_kz.toLocaleString()} Kz`}
                     </div>
                   </div>
                 </div>
