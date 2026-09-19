@@ -2,7 +2,7 @@ import { requireAgentRole } from '@/lib/server-auth';
 
 export async function GET(request, { params }) {
   try {
-    const { supabase, user } = await requireAgentRole();
+    const { supabase, user, db } = await requireAgentRole();
     const { ticketId } = await params;
 
     if (!ticketId) {
@@ -10,7 +10,7 @@ export async function GET(request, { params }) {
     }
 
     // Get ticket with related data
-    const { data: ticket, error } = await supabase
+    const { data: ticket, error } = await db
       .from('tickets')
       .select(`
         id,

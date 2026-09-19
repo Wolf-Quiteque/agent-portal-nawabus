@@ -37,7 +37,7 @@ function splitName(fullName) {
 
 export async function POST(req) {
   try {
-    const { supabase, user } = await requireAgentRole();
+    const { supabase, user, db } = await requireAgentRole();
     const body = await req.json();
 
     const {
@@ -69,7 +69,7 @@ export async function POST(req) {
     }
 
     // 1. Buscar a viagem + capacidade do autocarro
-    const { data: trip, error: tripErr } = await supabase
+    const { data: trip, error: tripErr } = await db
       .from('trips')
       .select('id, seat_class, price_usd, bus_id, departure_time, buses!inner(capacity)')
       .eq('id', trip_id)
@@ -86,7 +86,7 @@ export async function POST(req) {
     // 2. Procurar passageiro existente pelo telefone normalizado
     let passengerId = null;
     let passengerAlreadyExisted = false;
-    const { data: existing, error: existingErr } = await supabase
+    const { data: existing, error: existingErr } = await db
       .from('profiles')
       .select('id')
       .eq('phone_number', normalizedPhone)
@@ -124,7 +124,7 @@ export async function POST(req) {
 
     // 3. Determinar assentos ocupados no pool partilhado do autocarro
     //    (todas as trips "irmãs" — mesmo bus + janela [dep,arr] sobreposta).
-    const { data: siblings, error: sibErr } = await supabase
+    const { data: siblings, error: sibErr } = await db
       .rpc('get_overlapping_trip_ids', { p_trip_id: trip_id });
 
     if (sibErr) {
@@ -136,12 +136,12 @@ export async function POST(req) {
 
     const [{ data: taken, error: takenErr }, { data: holds, error: holdsErr }] =
       await Promise.all([
-        supabase
+        db
           .from('tickets')
           .select('seat_number')
           .in('trip_id', siblingIds)
           .in('status', ['active', 'pending', 'used']),
-        supabase
+        db
           .from('online_bookings')
           .select('seat_number, expires_at')
           .in('trip_id', siblingIds)
@@ -187,7 +187,7 @@ export async function POST(req) {
     }
     const amountDue = Number(promotion?.amount_due_kz ?? trip.price_usd);
 
-    const { data: newTicket, error: ticketErr } = await supabase
+    const { data: newTicket, error: ticketErr } = await db
       .from('tickets')
       .insert({
         trip_id,
@@ -221,7 +221,7 @@ export async function POST(req) {
     }
 
     // 6. Transação de pagamento (auditoria — mesmo padrão que /api/create-ticket)
-    const { error: payErr } = await supabase
+    const { error: payErr } = await db
       .from('payment_transactions')
       .insert({
         ticket_id: newTicket.id,

@@ -3,7 +3,7 @@ import { requireAgentRole } from '@/lib/server-auth';
 export async function GET(request) {
   try {
     // supabase aqui já está autenticado como agente/admin
-    const { supabase } = await requireAgentRole();
+    const { supabase, db } = await requireAgentRole();
 
     const { searchParams } = new URL(request.url);
 
@@ -23,7 +23,7 @@ export async function GET(request) {
     const endIso   = new Date(dateStr + 'T23:59:59Z').toISOString();
 
     // 1. Buscar viagens (trips + route + bus)
-    const { data: rawTrips, error: tripsErr } = await supabase
+    const { data: rawTrips, error: tripsErr } = await db
       .from('trips')
       .select(`
         id,
@@ -81,7 +81,7 @@ export async function GET(request) {
     const siblingsByTrip = {}; // trip_id -> string[] (includes self)
     await Promise.all(
       tripsFiltered.map(async (t) => {
-        const { data: siblings } = await supabase
+        const { data: siblings } = await db
           .rpc('get_overlapping_trip_ids', { p_trip_id: t.id });
         siblingsByTrip[t.id] = siblings?.map(s => s.id) ?? [t.id];
       })
@@ -91,7 +91,7 @@ export async function GET(request) {
     const allSiblingIds = [...new Set(Object.values(siblingsByTrip).flat())];
 
     // 3. Buscar assentos ocupados por bilhetes (tickets) across ALL sibling trips
-    const { data: takenTickets, error: takenErr } = await supabase
+    const { data: takenTickets, error: takenErr } = await db
       .from('tickets')
       .select('trip_id, seat_number, status')
       .in('trip_id', allSiblingIds)
@@ -103,7 +103,7 @@ export async function GET(request) {
     }
 
     // 4. Buscar assentos reservados (online_bookings) ainda válidos across ALL sibling trips
-    const { data: holds, error: holdsErr } = await supabase
+    const { data: holds, error: holdsErr } = await db
       .from('online_bookings')
       .select('trip_id, seat_number, expires_at')
       .in('trip_id', allSiblingIds)

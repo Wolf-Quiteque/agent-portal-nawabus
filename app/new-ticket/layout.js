@@ -3,12 +3,12 @@ import { TopNav } from '@/components/TopNav';
 
 export default async function NewTicketLayout({ children }) {
   // This will redirect if not authenticated or not agent/admin
-  const { supabase, user } = await requireAgentRole();
+  const { supabase, user, db } = await requireAgentRole();
 
   // Get agent profile
   let profile = null;
   try {
-    const { data: userProfile } = await supabase
+    const { data: userProfile } = await db
       .from('profiles')
       .select('*')
       .eq('id', user.id)

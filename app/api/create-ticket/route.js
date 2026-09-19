@@ -16,7 +16,7 @@ function generateReferenceCode() {
 
 export async function POST(request) {
   try {
-    const { supabase, user } = await requireAgentRole();
+    const { supabase, user, db } = await requireAgentRole();
     const body = await request.json();
     const {
       trip_id,
@@ -31,7 +31,7 @@ export async function POST(request) {
       return Response.json({ error: 'Campos obrigatorios em falta' }, { status: 400 });
     }
 
-    const { data: trip, error: tripErr } = await supabase
+    const { data: trip, error: tripErr } = await db
       .from('trips')
       .select('id, seat_class, price_usd')
       .eq('id', trip_id)
@@ -57,7 +57,7 @@ export async function POST(request) {
       finalReference = generateReferenceCode();
     }
 
-    const { data: newTicket, error: ticketErr } = await supabase
+    const { data: newTicket, error: ticketErr } = await db
       .from('tickets')
       .insert({
         trip_id,
@@ -89,7 +89,7 @@ export async function POST(request) {
       );
     }
 
-    const { error: payErr } = await supabase.from('payment_transactions').insert({
+    const { error: payErr } = await db.from('payment_transactions').insert({
       ticket_id: newTicket.id,
       amount_usd: amountDue,
       currency: 'AOA',

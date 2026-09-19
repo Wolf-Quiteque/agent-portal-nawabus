@@ -4,9 +4,9 @@ import HistoryClient from './HistoryClient';
 
 async function getAgentHistory(filters = {}) {
   try {
-    const { supabase, user } = await requireAgentRole();
+    const { supabase, user, db } = await requireAgentRole();
 
-    let query = supabase
+    let query = db
       .from('tickets')
       .select(`
         id,

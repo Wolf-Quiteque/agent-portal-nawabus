@@ -18,7 +18,7 @@ import crypto from 'crypto';
 // }
 export async function POST(req) {
   try {
-    const { supabase } = await requireAgentRole();
+    const { supabase, db } = await requireAgentRole();
     const body = await req.json();
 
     const {
@@ -55,7 +55,7 @@ export async function POST(req) {
     const normalizedEmergencyPhone = normalizePhoneNumber(emergency_contact_phone);
 
     // Ver se já existe um passageiro com este número (usar número normalizado)
-    const { data: existingProfile, error: existingErr } = await supabase
+    const { data: existingProfile, error: existingErr } = await db
       .from('profiles')
       .select('id, phone_number, role, first_name, last_name')
       .eq('phone_number', normalizedPhoneNumber)
@@ -69,7 +69,7 @@ export async function POST(req) {
 
     if (existingProfile) {
       // Já existe, então só garante que há linha em passengers
-      await supabase
+      await db
         .from('passengers')
         .upsert({
           id: existingProfile.id,
@@ -116,7 +116,7 @@ export async function POST(req) {
     const passengerId = userRes.user.id;
 
     // 2) Atualizar profile criado pelo trigger com info extra (national_id, dob, etc)
-    await supabase
+    await db
       .from('profiles')
       .update({
         national_id: national_id || null,
@@ -125,7 +125,7 @@ export async function POST(req) {
       .eq('id', passengerId);
 
     // 3) Criar/atualizar row em passengers (contacto emergência etc)
-    await supabase.from('passengers').upsert({
+    await db.from('passengers').upsert({
       id: passengerId,
       emergency_contact_name: emergency_contact_name || null,
       emergency_contact_phone: normalizedEmergencyPhone || null,
