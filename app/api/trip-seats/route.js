@@ -2,7 +2,7 @@ import { requireAgentRole } from '@/lib/server-auth';
 
 export async function GET(request) {
   try {
-    const { supabase } = await requireAgentRole();
+    const { supabase, db } = await requireAgentRole();
     const { searchParams } = new URL(request.url);
 
     const tripId = searchParams.get('tripId');
@@ -11,7 +11,7 @@ export async function GET(request) {
     }
 
     // Find all sibling trip IDs (same bus, overlapping [departure_time, arrival_time])
-    const { data: siblings, error: sibErr } = await supabase
+    const { data: siblings, error: sibErr } = await db
       .rpc('get_overlapping_trip_ids', { p_trip_id: tripId });
 
     if (sibErr) {
@@ -23,7 +23,7 @@ export async function GET(request) {
     const nowIso = new Date().toISOString();
 
     // Assentos ocupados por bilhetes emitidos (active/pending/used) across all siblings
-    const { data: ticketSeats, error: ticketErr } = await supabase
+    const { data: ticketSeats, error: ticketErr } = await db
       .from('tickets')
       .select('seat_number')
       .in('trip_id', siblingIds)
@@ -35,7 +35,7 @@ export async function GET(request) {
     }
 
     // Assentos reservados temporariamente em online_bookings (hold não expirado) across all siblings
-    const { data: holds, error: holdErr } = await supabase
+    const { data: holds, error: holdErr } = await db
       .from('online_bookings')
       .select('seat_number, expires_at')
       .in('trip_id', siblingIds)

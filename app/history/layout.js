@@ -4,11 +4,11 @@ import { Toaster } from 'sonner';
 
 export default async function HistoryLayout({ children }) {
   // This will redirect if not authenticated or not agent/admin
-  const { supabase, user } = await requireAgentRole();
+  const { supabase, user, db } = await requireAgentRole();
 
   let agentName = 'Agente';
   try {
-    const { data: profile } = await supabase
+    const { data: profile } = await db
       .from('profiles')
       .select('first_name, last_name')
       .eq('id', user.id)

@@ -2,11 +2,11 @@ import { requireAgentRole } from '@/lib/server-auth';
 import { TopNav } from '@/components/TopNav';
 
 export default async function FastTicketLayout({ children }) {
-  const { supabase, user } = await requireAgentRole();
+  const { supabase, user, db } = await requireAgentRole();
 
   let profile = null;
   try {
-    const { data: userProfile } = await supabase
+    const { data: userProfile } = await db
       .from('profiles')
       .select('*')
       .eq('id', user.id)

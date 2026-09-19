@@ -2,7 +2,7 @@ import { requireAgentRole } from '@/lib/server-auth';
 
 export async function GET(request) {
   try {
-    const { supabase } = await requireAgentRole();
+    const { supabase, db } = await requireAgentRole();
     const { searchParams } = new URL(request.url);
 
     const tripId = searchParams.get('tripId');
@@ -11,7 +11,7 @@ export async function GET(request) {
       return Response.json({ error: 'Trip ID is required' }, { status: 400 });
     }
 
-    const { data: trip, error } = await supabase
+    const { data: trip, error } = await db
       .from('trips')
       .select(`
         id,

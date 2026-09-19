@@ -4,7 +4,7 @@ import { requireAgentRole } from '@/lib/server-auth';
 // GET /api/search-passenger?phone=923000111
 export async function GET(req) {
   try {
-    const { supabase } = await requireAgentRole();
+    const { supabase, db } = await requireAgentRole();
     const { searchParams } = new URL(req.url);
     const phone = searchParams.get('phone');
 
@@ -16,7 +16,7 @@ export async function GET(req) {
     }
 
     // 1. Tenta achar perfil com esse número e role = 'passenger'
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile, error: profileError } = await db
       .from('profiles')
       .select('id, first_name, last_name, phone_number, role')
       .eq('phone_number', phone)
@@ -39,7 +39,7 @@ export async function GET(req) {
     }
 
     // 2. Busca info extra do passageiro (emergency contact etc)
-    const { data: extraInfo, error: extraError } = await supabase
+    const { data: extraInfo, error: extraError } = await db
       .from('passengers')
       .select(
         'emergency_contact_name, emergency_contact_phone, passport_number, nationality'

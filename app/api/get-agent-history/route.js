@@ -2,7 +2,7 @@ import { requireAgentRole } from '@/lib/server-auth';
 
 export async function GET(request) {
   try {
-    const { supabase, user } = await requireAgentRole();
+    const { supabase, user, db } = await requireAgentRole();
     const { searchParams } = new URL(request.url);
 
     const filters = {
@@ -13,7 +13,7 @@ export async function GET(request) {
       paymentStatus: searchParams.get('paymentStatus'),
     };
 
-    let query = supabase
+    let query = db
       .from('tickets')
       .select(`
         id,
