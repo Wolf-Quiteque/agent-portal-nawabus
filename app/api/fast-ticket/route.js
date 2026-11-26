@@ -158,8 +158,12 @@ export async function POST(req) {
     for (const h of holds || []) occupied.add(h.seat_number);
 
     const freeSeats = [];
-    for (let n = 2; n <= busCapacity; n++) {
-      if (!occupied.has(n)) freeSeats.push(n);
+    // Seat 3 belongs to the co-pilot (public.copilot_seat_number()); seat 1 is
+    // an ordinary seat. The database refuses a ticket on seat 3, so picking it
+    // here would fail the sale.
+    const COPILOT_SEAT_NUMBER = 3;
+    for (let n = 1; n <= busCapacity; n++) {
+      if (n !== COPILOT_SEAT_NUMBER && !occupied.has(n)) freeSeats.push(n);
     }
     if (freeSeats.length === 0) {
       return NextResponse.json({ error: 'Viagem cheia — sem lugares' }, { status: 409 });
